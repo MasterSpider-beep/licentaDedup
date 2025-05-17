@@ -1,93 +1,73 @@
 import os
-import sqlite3
+import json
+from threading import Lock
 
 class ChunkStorage:
     def __init__(self, chunk_dir):
         self.chunk_dir = chunk_dir
-        os.makedirs(chunk_dir, exist_ok=True)
-        self.db_path = os.path.join(chunk_dir, "chunk_index.db")
-        self._init_db()
-        self.container_handles = {}
+        os.makedirs(self.chunk_dir, exist_ok=True)
 
-    def _init_db(self):
-        self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
-        self.cursor = self.conn.cursor()
-        self.cursor.execute('''
-            CREATE TABLE IF NOT EXISTS chunk_index (
-                chunk_hash TEXT PRIMARY KEY,
-                container_file TEXT,
-                offset INTEGER,
-                size INTEGER
-            )
-        ''')
-        self.cursor.execute('''
-            CREATE TABLE IF NOT EXISTS file_map (
-                file_path TEXT,
-                chunk_index INTEGER,
-                chunk_hash TEXT,
-                chunk_size INTEGER,
-                PRIMARY KEY (file_path, chunk_index)
-            )
-        ''')
-        self.conn.commit()
+        self.file_chunks_path = os.path.join(self.chunk_dir, "file_chunks.json")
+        self.chunk_metadata_path = os.path.join(self.chunk_dir, "chunk_metadata.json")
 
-    def write_chunk(self, path, chunk_hash, chunk):
-        container_name = path.strip("/").replace("/", "_") + ".container"
-        container_path = os.path.join(self.chunk_dir, container_name)
+        self.chunk_metadata = {}
+        self.lock = Lock()
 
-        if path not in self.container_handles:
-            os.makedirs(os.path.dirname(container_path), exist_ok=True)
-            f = open(container_path, 'ab+')
-            f.seek(0, os.SEEK_END)
-            offset = f.tell()
-            self.container_handles[path] = (f, offset)
-        else:
-            f, offset = self.container_handles[path]
-            f.seek(0, os.SEEK_END)
-            offset = f.tell()
+        # Load on init
+        self.load_chunk_metadata()
 
-        f.write(chunk)
-        f.flush()
+    def store_file_chunks(self, path, chunks):
+        with self.lock:
+            file_map = self.load_file_chunks()
+            file_map[path] = chunks
+            with open(self.file_chunks_path, 'w') as f:
+                json.dump(file_map, f)
 
-        self.cursor.execute(
-            "INSERT INTO chunk_index (chunk_hash, container_file, offset, size) VALUES (?, ?, ?, ?)",
-            (chunk_hash, container_name, offset, len(chunk))
-        )
-        self.conn.commit()
+    def write_chunk_metadata(self, new_metadata: dict):
+        with self.lock:
+            transformed_metadata = {}
 
-    def store_file_map(self, path, chunk_list):
-        self.cursor.execute("DELETE FROM file_map WHERE file_path = ?", (path,))
-        for idx, (chunk_hash, chunk_size) in enumerate(chunk_list):
-            self.cursor.execute(
-                "INSERT INTO file_map (file_path, chunk_index, chunk_hash, chunk_size) VALUES (?, ?, ?, ?)",
-                (path, idx, chunk_hash, chunk_size)
-            )
-        self.conn.commit()
+            for chunk_hash, (path, offset, size) in new_metadata.items():
+                container_name = path.strip("/").replace("/", "_") + ".container"
+                transformed_metadata[chunk_hash] = (container_name, offset, size)
+
+            self.chunk_metadata.update(transformed_metadata)
+
+            with open(self.chunk_metadata_path, 'w') as f:
+                json.dump(self.chunk_metadata, f)
+
+        self.load_chunk_metadata()
+
+    def write_container(self, path, data, offset):
+        path = path.strip("/").replace("/", "_") + ".container"
+        container_path = os.path.join(self.chunk_dir, path)
+        with self.lock:
+            mode = 'r+b' if os.path.exists(container_path) else 'wb'
+            with open(container_path, mode) as f:
+                f.seek(offset)
+                f.write(data)
 
     def get_chunk_metadata(self, chunk_hash):
-        self.cursor.execute(
-            "SELECT container_file, offset, size FROM chunk_index WHERE chunk_hash = ?",
-            (chunk_hash,)
-        )
-        return self.cursor.fetchone()
+        print(self.chunk_metadata.get(chunk_hash))
+        return self.chunk_metadata.get(chunk_hash)
 
     def load_file_chunks(self):
-        self.cursor.execute('SELECT file_path, chunk_index, chunk_hash, chunk_size FROM file_map ORDER BY file_path, chunk_index')
-        rows = self.cursor.fetchall()
-        file_chunks = {}
-        for file_path, _, chunk_hash, chunk_size in rows:
-            file_chunks.setdefault(file_path, []).append((chunk_hash, chunk_size))
-        return file_chunks
+        if os.path.exists(self.file_chunks_path):
+            with open(self.file_chunks_path, 'r') as f:
+                return json.load(f)
+        return {}
+
+    def load_chunk_metadata(self):
+        if os.path.exists(self.chunk_metadata_path):
+            with open(self.chunk_metadata_path, 'r') as f:
+                self.chunk_metadata = json.load(f)
+        else:
+            self.chunk_metadata = {}
 
     def chunk_exists(self, chunk_hash):
-        self.cursor.execute("SELECT 1 FROM chunk_index WHERE chunk_hash = ?", (chunk_hash,))
-        return self.cursor.fetchone() is not None
+        return chunk_hash in self.chunk_metadata
 
-    def flush(self):
-        self.conn.commit()
-
-    def close(self):
-        self.conn.close()
-        for f, _ in self.container_handles.values():
-            f.close()
-        self.container_handles.clear()
+    def get_container_size(self, container_path):
+        if os.path.exists(container_path):
+            return os.path.getsize(container_path)
+        return 0

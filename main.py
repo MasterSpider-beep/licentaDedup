@@ -8,6 +8,7 @@ import io
 import time
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from garbageCollector import GarbageCollector
 
 class FilesystemDedup(Operations):
     def __init__(self, root):
@@ -17,6 +18,7 @@ class FilesystemDedup(Operations):
         self.storage = ChunkStorage(self.chunk_dir)
         self.file_chunks = defaultdict(list, self.storage.get_all_file_chunks())
         self.executor = ThreadPoolExecutor(max_workers=8)
+        self.garbage_collector = GarbageCollector(self.storage, self.chunk_dir, interval=120)
 
         # Locks
         self.file_locks = defaultdict(threading.RLock)
@@ -165,6 +167,7 @@ class FilesystemDedup(Operations):
             chunks = self.file_chunks[path]
             data = bytearray()
             current_offset = 0
+            remaining_size = size
             i = 0
 
             while i < len(chunks) and len(data) < size:
@@ -175,23 +178,41 @@ class FilesystemDedup(Operations):
                     i += 1
                     continue
 
-                meta = self.storage.get_chunk_metadata(chunk_hash)
-                if not meta:
+                # Start grouping chunks with the same container
+                current_chunk_meta = self.storage.get_chunk_metadata(chunk_hash)
+                if not current_chunk_meta:
                     raise FuseOSError(errno.EIO)
 
-                container_file, chunk_offset, chunk_len = meta
-                container_path = os.path.join(self.chunk_dir, container_file)
+                container_file, base_offset, _ = current_chunk_meta
+                # Group by container
+                group_container = container_file
+                first_offset = base_offset
+                last_offset = 0
+                while i < len(chunks):
+                    chunk_hash, chunk_size = chunks[i]
+                    meta = self.storage.get_chunk_metadata(chunk_hash)
+                    if not meta:
+                        raise FuseOSError(errno.EIO)
+                    container, chunk_offset, chunk_len = meta
+
+                    if container != group_container:
+                        last_offset = chunk_offset + chunk_len
+                        break
+                    i += 1
+                    if i >= len(chunks):
+                        last_offset = chunk_offset + chunk_len
+
+                # Read all grouped chunks from the container in a single read
+                container_path = os.path.join(self.chunk_dir, group_container)
                 with open(container_path, 'rb') as f:
-                    f.seek(chunk_offset)
-                    chunk_data = f.read(chunk_len)
+                    f.seek(first_offset)
+                    bulk_data = f.read(last_offset - first_offset)
 
-                read_start = max(0, offset - current_offset)
-                read_end = min(chunk_size, read_start + size - len(data))
-                data.extend(chunk_data[read_start:read_end])
+                data.extend(bulk_data[0:min(len(bulk_data), remaining_size)])
+                remaining_size -= len(bulk_data)
 
-                current_offset += chunk_size
-                i += 1
             return bytes(data)
+
 
 if __name__ == "__main__":
     import argparse

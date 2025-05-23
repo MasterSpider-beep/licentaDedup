@@ -71,6 +71,13 @@ class ChunkStorage:
     def get_all_file_chunks(self):
         with self.file_chunks_lock:
             return dict(self.file_chunks)
+        
+    def get_all_chunk_hashes(self):
+        hashes = set()
+        with self.chunk_metadata_lock:
+            for chunk_hash, _ in self.chunk_metadata.items():
+                hashes.add(chunk_hash)
+        return hashes
 
     #Internal Operations
 

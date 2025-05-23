@@ -19,6 +19,7 @@ class FilesystemDedup(Operations):
         self.file_chunks = defaultdict(list, self.storage.get_all_file_chunks())
         self.executor = ThreadPoolExecutor(max_workers=8)
         self.garbage_collector = GarbageCollector(self.storage, self.chunk_dir, interval=120)
+        self.garbage_collector.start()
 
         # Locks
         self.file_locks = defaultdict(threading.RLock)
@@ -212,6 +213,10 @@ class FilesystemDedup(Operations):
                 remaining_size -= len(bulk_data)
 
             return bytes(data)
+    
+    def __del__(self):
+        self.executor.shutdown(wait=True)
+        self.garbage_collector.stop()
 
 
 if __name__ == "__main__":

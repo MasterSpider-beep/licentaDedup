@@ -4,11 +4,11 @@ import time
 import threading
 
 MOUNT_PATH = './mountPoint'
-NUM_FILES = 10
+NUM_FILES = 20
 NUM_THREADS = 1
-MIN_SIZE = 1024 * 100      # 100 KB
+MIN_SIZE = 1024 * 1024     # 1 MB
 MAX_SIZE = 1024 * 1024 * 5 # 5 MB
-BLOCK_SIZE = 1024 * 120          # 120 KB
+BLOCK_SIZE = 1024 * 10          # 10 KB
 FRAGMENT_CHANCE = 0.05     # 5% chance to insert noise
 FRAGMENT_MIN = 100
 FRAGMENT_MAX = 500

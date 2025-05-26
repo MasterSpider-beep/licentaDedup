@@ -20,14 +20,14 @@ class GarbageCollector(threading.Thread):
     def run(self):
         while not self._stop_event.is_set():
             if self.interval > 0:
-                self.collect_garbage()
                 self._stop_event.wait(self.interval)
+                self.collect_garbage()
             else:
                 self._stop_event.wait()
 
     def trigger(self):
         self.collect_garbage()
-        self._stop_event.set()  # Wake thread if waiting manually
+        self._stop_event.clear()  # Wake thread if waiting manually
 
     def collect_garbage(self):
         with self.lock:
@@ -51,6 +51,8 @@ class GarbageCollector(threading.Thread):
 
             # SWEEP: rewrite containers with only live chunks
             temp_metadata_file = os.path.join(self.chunk_dir, "temp_metadata.json")
+            with open(temp_metadata_file, 'w') as temp_out:
+                pass
             for container_file, chunks in container_map.items():
                 print(container_file)
                 container_path = os.path.join(self.chunk_dir, container_file)

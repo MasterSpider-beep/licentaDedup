@@ -18,8 +18,9 @@ class FilesystemDedup(Operations):
         self.storage = ChunkStorage(self.chunk_dir)
         self.file_chunks = defaultdict(list, self.storage.get_all_file_chunks())
         self.executor = ThreadPoolExecutor(max_workers=8)
-        self.garbage_collector = GarbageCollector(self.storage, self.chunk_dir, interval=120)
-        self.garbage_collector.start()
+        self.garbage_collector = GarbageCollector(self.storage, self.chunk_dir, interval=180)
+        #self.garbage_collector.start()
+        #self.garbage_collector.trigger() 
 
         # Locks
         self.file_locks = defaultdict(threading.RLock)

@@ -31,7 +31,7 @@ class GarbageCollector(threading.Thread):
 
     def collect_garbage(self):
         with self.lock:
-            print("[GC] Starting mark and sweep garbage collection")
+            #print("[GC] Starting garbage collection")
 
             # MARK: collect used chunks
             file_chunks = self.storage.get_all_file_chunks()
@@ -54,7 +54,6 @@ class GarbageCollector(threading.Thread):
             with open(temp_metadata_file, 'w') as temp_out:
                 pass
             for container_file, chunks in container_map.items():
-                print(container_file)
                 container_path = os.path.join(self.chunk_dir, container_file)
 
                 if not os.path.exists(container_path):
@@ -94,7 +93,7 @@ class GarbageCollector(threading.Thread):
             for filename in all_containers:
                 if filename not in live_containers and filename.endswith(".container"):
                     path = os.path.join(self.chunk_dir, filename)
-                    print(f"[GC] Removing unused container: {filename}")
+                    #print(f"[GC] Removing unused container: {filename}")
                     os.remove(path)
 
-            print("[GC] Completed garbage collection")
+            #print("[GC] Completed garbage collection")

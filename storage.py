@@ -101,9 +101,14 @@ class ChunkStorage:
         self.io_queue.put(target)
 
     def _atomic_write(self, path, data):
+        #if os.path.exists(path):
+        #    shutil.move(path, path + ".bak")
+        
         tmp_path = path + ".tmp"
         with open(tmp_path, 'w') as f:
             json.dump(data, f)
+            f.flush()
+            os.fsync(f.fileno())
         os.replace(tmp_path, path)
 
     def _background_writer(self):

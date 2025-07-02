@@ -1,11 +1,11 @@
 import threading
 
-WINDOW_SIZE = 48
+WINDOW_SIZE = 64
 #POLYNOMIAL = 0xEDB88320
 POLYNOMIAL = 0x3DA3358B4DC173
-TARGET_MASK = 0xFFF #average 4 KB
+TARGET_MASK = 0x3FF #average 1KB
 MAX_CHUNK_SIZE = 1024 * 16 #16 KB
-MIN_CHUNK_SIZE = 20 #1 KB
+MIN_CHUNK_SIZE = 512 #0.5 KB
 
 class Chunker:
     def __init__(self):

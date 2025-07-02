@@ -9,6 +9,7 @@ import time
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from garbageCollector import GarbageCollector
+import mmap
 
 class FilesystemDedup(Operations):
     def __init__(self, root):
@@ -18,8 +19,8 @@ class FilesystemDedup(Operations):
         self.storage = ChunkStorage(self.chunk_dir)
         self.file_chunks = defaultdict(list, self.storage.get_all_file_chunks())
         self.executor = ThreadPoolExecutor(max_workers=8)
-        self.garbage_collector = GarbageCollector(self.storage, self.chunk_dir, interval=180)
-        #self.garbage_collector.start()
+        self.garbage_collector = GarbageCollector(self.storage, self.chunk_dir, interval=30)
+        self.garbage_collector.start()
         #self.garbage_collector.trigger() 
 
         # Locks
@@ -207,8 +208,9 @@ class FilesystemDedup(Operations):
                 # Read all grouped chunks from the container in a single read
                 container_path = os.path.join(self.chunk_dir, group_container)
                 with open(container_path, 'rb') as f:
-                    f.seek(first_offset)
-                    bulk_data = f.read(last_offset - first_offset)
+                    mm = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
+                    bulk_data = mm[first_offset:last_offset]
+                    mm.close()
 
                 data.extend(bulk_data[0:min(len(bulk_data), remaining_size)])
                 remaining_size -= len(bulk_data)

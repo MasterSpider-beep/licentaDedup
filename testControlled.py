@@ -4,15 +4,15 @@ import time
 import threading
 
 MOUNT_PATH = './mountPoint'
-NUM_FILES = 20
+NUM_FILES = 10
 NUM_THREADS = 1
-MIN_SIZE = 1024 * 1024     # 1 MB
+MIN_SIZE = 1024 * 1024 * 4 # 4 MB
 MAX_SIZE = 1024 * 1024 * 5 # 5 MB
-BLOCK_SIZE = 1024 * 10          # 10 KB
-FRAGMENT_CHANCE = 0.05     # 5% chance to insert noise
-FRAGMENT_MIN = 100
-FRAGMENT_MAX = 500
-BLOCK_POOL_SIZE = 10000     
+BLOCK_SIZE = 1024 * 4      # 4 KB
+FRAGMENT_CHANCE = 0.05     # 0% chance to insert noise
+FRAGMENT_MIN = 1024
+FRAGMENT_MAX = 1024 * 5
+BLOCK_POOL_SIZE = 2500
 
 # Shared counter with lock
 total_bytes_written = 0
@@ -43,20 +43,20 @@ def write_files(thread_id, start_index, num_files):
             while written < size:
                 to_write = min(BLOCK_SIZE, size - written)
                 block = get_random_block()[:to_write]
+
+                # Maybe insert fragment inside the block
+                if random.random() < FRAGMENT_CHANCE:
+                    frag_size = random.randint(FRAGMENT_MIN, FRAGMENT_MAX)
+                    frag = os.urandom(frag_size)
+                    insert_pos = random.randint(0, len(block))
+                    block = block[:insert_pos] + frag + block[insert_pos:]
+                    to_write = len(block)  # Adjust written size
+
                 f.write(block)
                 written += to_write
 
                 with counter_lock:
                     total_bytes_written += to_write
-
-                if random.random() < FRAGMENT_CHANCE:
-                    frag_size = random.randint(FRAGMENT_MIN, FRAGMENT_MAX)
-                    f.write(os.urandom(frag_size))
-                    written += frag_size
-                    with counter_lock:
-                        total_bytes_written += frag_size
-
-        time.sleep(0.5)
 
 def main():
     initialize_block_pool()
@@ -82,7 +82,7 @@ def main():
     total_mb = total_bytes_written / (1024 * 1024)
     print(f"\nFinished writing {NUM_FILES} files with {NUM_THREADS} threads.")
     print(f"Total data written (including noise): {total_mb:.2f} MB")
-    #print(f"Total elapsed time: {duration:.2f} seconds")
+    print(f"Total elapsed time: {duration:.2f} seconds")
 
 if __name__ == '__main__':
     main()
